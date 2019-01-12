@@ -1,3 +1,5 @@
+#!/usr/bin/env python2
+# -*- coding: utf-8 -*-
 """
     Dogma agent AI module - Dynamic Objective General Machine Agent
 
@@ -60,7 +62,7 @@ class Agent(object):
 
 
     def program_new(self, path, config=None):
-        """
+        """Registers a new program, and loads its python module.
         """
         mod = importlib.import_module(path)
         throw = True
@@ -77,7 +79,8 @@ class Agent(object):
 
 
     def program_load(self, program, config=None, state=None):
-        """
+        """Loads a program. Called automatically with dogma.program_new()
+        Note the 'program' argument is a instance of dogma.program.Program
         """
         if inspect.isclass(program):
             program = program(self)
@@ -91,7 +94,8 @@ class Agent(object):
 
 
     def program_unload(self, program):
-        """
+        """Unloads a program.
+        Note the 'program' argument is a instance of dogma.program.Program
         """
         name = program.__class__.__name__
         if name not in self.programs:
@@ -103,7 +107,8 @@ class Agent(object):
 
 
     def program_reload(self, program):
-        """
+        """Reloads a program.
+        Note the 'program' argument is a instance of dogma.program.Program
         """
         name = program.__class__.__name__
         config = self.programs[name].config
@@ -113,7 +118,7 @@ class Agent(object):
 
 
     def init(self):
-        """
+        """Initializes all programs, calling each ones .init() method.
         """
         for program in self.programs.values():
             program.init()

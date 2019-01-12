@@ -17,6 +17,11 @@
     PlugableProgram() - Similar to the Program class, but supports loading plugins
     in a format that mirrors the Agent/Program structure.
 
+    Plugin() - A plugin to be loaded by a PlugableProgram(). 
+    
+    PlugableProgram() and Plugin() follow the same structure as a dogma.Agent()
+    and its programs. ie: there is not much difference coding a Plugin(), and 
+    coding a Program() (or PlugableProgram)
 
     MIT License
 
