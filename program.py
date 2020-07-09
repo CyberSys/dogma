@@ -6,7 +6,7 @@
 
     Created on Mon Nov  5 18:03:20 2018
 
-    @author: wolf
+    @author: Fenris_Wolf
 
     These classes are meant to be superclasses as they do very little on their own
     (but yet, so much!). 3 classes are contained in this module:
@@ -17,10 +17,10 @@
     PlugableProgram() - Similar to the Program class, but supports loading plugins
     in a format that mirrors the Agent/Program structure.
 
-    Plugin() - A plugin to be loaded by a PlugableProgram(). 
-    
+    Plugin() - A plugin to be loaded by a PlugableProgram().
+
     PlugableProgram() and Plugin() follow the same structure as a dogma.Agent()
-    and its programs. ie: there is not much difference coding a Plugin(), and 
+    and its programs. ie: there is not much difference coding a Plugin(), and
     coding a Program() (or PlugableProgram)
 
     MIT License
@@ -51,6 +51,7 @@ import inspect
 import gevent
 from six.moves import reload_module
 
+
 class ProgramLoadError(Exception):
     def __init__(self, value):
         self.parameter = value
@@ -59,52 +60,94 @@ class ProgramLoadError(Exception):
 
 
 class Plugin(object):
-    """Basic plugin class for the PlugableProgram class.
+    """
+    Basic plugin class for the PlugableProgram class, intended to be used as a superclass.
+
+    Attributes
+    ----------
+    parent : dogma.program.Program
+        The object instance of a Program subclass that this plugin is attached to.
+    config : Object
+        abstract configuration object placeholder.
     """
     def __init__(self, parent):
         self.parent = parent
-        #self.agent = parent.agent
         self.config = None
 
+
     def load(self, config=None, state=None):
-        """Called when the plugin is loaded, this setups the local plugins config
+        """
+        Called when the plugin is loaded, this setups the local plugins config
         attribute. Your Plugin subclass should call this BEFORE executing any of
         its own code in this method. Note this should just contain initial setup
         code.
         """
         self.config = config
 
+
     def unload(self, state=None):
-        """Called when the plugin is unloaded, or the program is unloaded/shutting
+        """
+        Called when the plugin is unloaded, or the program is unloaded/shutting
         down.
         """
         if state is None:
             state = {}
         return state
 
+
     def init(self):
-        """Called when the program and plugins initialize. Plugins are initialized
+        """
+        Called when the program and plugins initialize. Plugins are initialized
         first, then the program.
         """
         pass
 
-    def sibling(self, name):
+
+    def sibling(self, unique_id):
         """
         Returns a sibling plugin: another plugin loaded by this program.
-        """
-        return self.parent.plugins.get(name)
 
-    def uncle(self, name):
+        Parameters
+        ----------
+        unique_id: str
+            string id of the sibling plugin
+
+        Returns
+        ----------
+        dogma.program.Plugin | None
+            A subclass instance
+
         """
-        Returns a this plugins uncle: another program loaded by this program's agent.
+        return self.parent.plugins.get(unique_id)
+
+
+    def uncle(self, unique_id):
         """
-        return self.parent.agent.programs.get(name)
+        Returns a this plugins uncle: a sibling Program of this plugin's parent Program.
+
+        Parameters
+        ----------
+        unique_id: str
+            string id of the uncle program
+
+        Returns
+        ----------
+        dogma.program.Program | None
+            A subclass instance
+        """
+        return self.parent.agent.programs.get(unique_id)
+
 
     def agent(self):
         """
         Returns the agent of this plugins parent program.
+
+        Returns
+        ----------
+        dogma.Agent
         """
         return self.parent.agent
+
 
 
 class Program(object):
@@ -114,7 +157,9 @@ class Program(object):
     def __init__(self, agent):
         self.agent = agent
         self.config = None
+        self.unique_id = None
         self.green = None
+
 
     def load(self, config=None, state=None):
         """
@@ -122,6 +167,7 @@ class Program(object):
         code by your subclass should be in this method.
         """
         self.config = config
+
 
     def unload(self, state=None):
         """
@@ -133,6 +179,7 @@ class Program(object):
             self.green.kill()
         return state
 
+
     def init(self):
         """
         Called when initializing the program. Your Program subclass needs to call
@@ -140,6 +187,7 @@ class Program(object):
         (your choice, but remember calling Program.init will spawn our run greenlet)
         """
         self.green = gevent.spawn(self.run)
+
 
     def run(self):
         """
@@ -156,7 +204,7 @@ class PlugableProgram(Program):
     dogma.programs.Program.
     """
     def __init__(self, agent):
-        Program.__init__(self, agent)
+        super().__init__(agent)
         self.plugins = {}
 
 
@@ -164,9 +212,7 @@ class PlugableProgram(Program):
         """
         Identical to Program.load() but loads any plugins defined in the config.
         """
-        Program.load(self, config, state)
-        for plug in self.config.get('plugins', []):
-            self.plugin_new(plug, self.config.get(plug, {}))
+        super().load(config, state)
 
 
     def unload(self, state=None):
@@ -175,14 +221,16 @@ class PlugableProgram(Program):
         this program also have their unload() methods triggered. This also
         kills this PlugableProgram's greenlet
         """
-        #state = Program.unload(self, state)
         if state is None:
             state = {}
-        for plugin in self.plugins:
-            state[plugin.name] = plugin.unload({})
-            del self.plugins[plugin.name]
+        state['plugins'] = state['plugins'] or {}
+
+        for name, plugin in self.plugins.items():
+            state['plugins'][name] = plugin.unload({})
+
         if self.green and not self.green.dead:
             self.green.kill()
+
         return state
 
 
@@ -196,7 +244,7 @@ class PlugableProgram(Program):
         """
         for plugin in self.plugins.values():
             plugin.init()
-        Program.init(self)
+        super().init()
 
 
     def run(self):
@@ -204,61 +252,73 @@ class PlugableProgram(Program):
         This method MUST be overwriten by your subclass or a NotImplementedError
         is raised. All code in this method is run in a sepeate greenlet.
         """
-        Program.run(self)
+        super().run()
 
 
-    def plugin_new(self, path, config=None):
+    def plugin_import_list(self, plugins):
+        for module, config in plugins.items():
+            self.plugin_import(module, config)
+
+
+    def plugin_import(self, module, config=None):
         """
-        Adds and loads a plugin (or plugins), based on module path.
+        Adds and loads a plugin (or plugins), based on module path
         """
-        mod = importlib.import_module(path)
-        loaded = False
+        mod = importlib.import_module(module)
+        plugin = getattr(mod, "Plugin")
 
-        for entry in [getattr(mod, i) for i in dir(mod)]:
-            if not inspect.isclass(entry):
-                continue
-            if issubclass(entry, Plugin) and entry != Plugin:
-                loaded = True
-                self.plugin_load(entry, config=config)
+        if not plugin:
+            raise ProgramLoadError("Class Plugin for module %s not defined" % module)
 
-        if not loaded:
-            raise ProgramLoadError("No Plugin subclass in %s" % path)
+        if not inspect.isclass(plugin):
+            raise ProgramLoadError("Attribute Plugin for module %s is not a class" % module)
+
+        if plugin == Plugin:
+            raise ProgramLoadError("Class Plugin for module %s can not be dogma.program.Plugin" % module)
+
+        return self.plugin_load(plugin, module, config=config)
 
 
-    def plugin_load(self, plugin, config=None, state=None):
+    def plugin_load(self, plugin, unique_id, config=None, state=None):
         """
         Loads a plugin.
         """
+        if unique_id in self.plugins:
+            raise ProgramLoadError("Plugin already loaded: %s" % unique_id)
+
         if inspect.isclass(plugin):
             plugin = plugin(self)
 
-        name = plugin.__class__.__name__
-        if name in self.plugins:
-            raise ProgramLoadError("Program already loaded: %s" % name)
-
-        self.plugins[name] = plugin
+        plugin.unique_id = unique_id
+        self.plugins[unique_id] = plugin
         plugin.load(config=config, state=state or {})
+        return plugin
 
 
-    def plugin_unload(self, plugin):
+    def plugin_unload(self, unique_id):
         """
         Unloads and removes a plugin.
         """
-        name = plugin.__class__.__name__
-        if name not in self.plugins:
-            raise ProgramLoadError("Cannot remove non-existant plugin: %s" % name)
+        if unique_id is None or unique_id not in self.plugins:
+            raise ProgramLoadError("Cannot remove non-loaded plugin: %s" % unique_id)
 
-        state = self.plugins[name].unload({})
-        del self.plugins[name]
+        state = self.plugins[unique_id].unload({})
+        del self.plugins[unique_id]
         return state
 
 
-    def plugin_reload(self, plugin):
+    def plugin_reload(self, unique_id):
         """
         Reloads a plugin.
         """
-        name = plugin.__class__.__name__
-        config = self.plugins[name].config
-        state = self.plugin_unload(plugin)
-        module = reload_module(inspect.getmodule(plugin))
-        self.plugin_load(getattr(module, name), config, state)
+
+        if unique_id is None or unique_id not in self.plugins:
+            raise ProgramLoadError("Cannot reload non-loaded plugin: %s" % unique_id)
+
+        plugin = self.plugins[unique_id]
+        config = plugin.config # TODO: this should accept custom configs like program_reload does.
+        state = self.plugin_unload(unique_id)
+        reload_module(inspect.getmodule(plugin))
+        plugin = self.plugin_load(plugin.__class__, unique_id, config=config, state=state)
+        plugin.init()
+        return plugin

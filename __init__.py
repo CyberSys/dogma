@@ -1,4 +1,4 @@
-#!/usr/bin/env python2
+#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
     Dogma agent AI module - Dynamic Objective General Machine Agent
@@ -7,12 +7,13 @@
     load/unload during runtime (like plugins), but with each sub-program capable
     of loading and unloading plugins as well.
 
+
     from gevent import monkey
     monkey.patch_all()
 
     import dogma
     dog = dogma.Agent()
-    dog.program_new('module.path', config_dict)
+    dog.program_import('module.path')
     dog.init()
 
     Your program modules should be subclasses of the classes in the dogma.program
@@ -51,74 +52,190 @@ from six.moves import reload_module
 from dogma.program import Program, PlugableProgram, ProgramLoadError
 
 
-
 class Agent(object):
-    """Agent class representing a AI
+    """
+    Agent class representing a dogma agent
+
     When subclassing and overriding the following methods, Agent.<method>()
     MUST be called as well in your override: __init__(), init(), check(),
-    step()"""
+    step()
+
+    Attributes
+    ----------
+    programs : dict(str, Program)
+        a dictionary of unique id's and loaded Program class objects.
+
+    """
+    programs = None
+
     def __init__(self):
         self.programs = {}
 
 
-    def program_new(self, path, config=None):
-        """Registers a new program, and loads its python module.
+    def program_import(self, module, unique_id=None, classname="Program", config=None, plugins=None):
         """
-        mod = importlib.import_module(path)
-        throw = True
+        Registers a imports a program module, and loads its dogma.programs.Program subclass.
 
-        for item in [getattr(mod, name) for name in dir(mod)]:
-            if not inspect.isclass(item):
-                continue
-            if issubclass(item, Program) and not item in (Program, PlugableProgram):
-                throw = False
-                self.program_load(item, config=config)
+        Parameters
+        ----------
+        module : str
+            string name of the module to import
+        unique_id : Optional[str]
+            unique id string to assign the program. by default the module name is used
+        classname : Optional[str]
+            string name of the module's class to instance. defaults to 'Program'
+        config : Optional[object]
+            abstract configuration object to be passed to the program instance.
+        plugins : Optional[list(str)]
+            list of plugins this program should load (if applicable)
 
-        if throw:
-            raise ProgramLoadError("No Program subclass in %s" % path)
+        Returns
+        ----------
+        dogma.program.Program
+            A subclass instance, the return value of Agent.program_load()
 
+        Raises
+        ----------
+        dogma.program.ProgramLoadError
 
-    def program_load(self, program, config=None, state=None):
-        """Loads a program. Called automatically with dogma.program_new()
-        Note the 'program' argument is a instance of dogma.program.Program
         """
+        unique_id = unique_id or module
+        mod = importlib.import_module(module)
+        program = getattr(mod, classname)
+
+        if not program:
+            raise ProgramLoadError("Class %s for module %s not defined" % (classname, module))
+
+        if not inspect.isclass(program):
+            raise ProgramLoadError("Attribute %s for module %s is not a class" % (classname, module))
+
+        if program == Program:
+            raise ProgramLoadError("Class %s for module %s can not be dogma.program.Program" % (classname, module))
+
+        return self.program_load(program, unique_id, config=config, plugins=plugins)
+
+
+
+    def program_load(self, program, unique_id, config=None, state=None, plugins=None):
+        """
+        Instances a Program subclass object and calls its .load() method.
+        Called automatically with Agent.program_new() after module import, and on program reload.
+
+        Parameters
+        ----------
+        program : dogma.programs.Program
+            a Program subclass to instance.
+        unique_id : str
+            unique id string to assign the program.
+        config : Optional
+            abstract configuration object to be passed to the program instance.
+        state : Optional(dict)
+            state dict to be passed to the program instance, used to restore a
+            previous state. The return value from Program.unload() (or Agent.program_unload())
+        plugins : Optional[list(str)]
+            list of plugins this program should load (if applicable)
+
+        Returns
+        ----------
+        dogma.program.Program
+            A instance of the class specified in the `program` argument
+
+        Raises
+        ----------
+        dogma.program.ProgramLoadError
+
+        """
+        if unique_id in self.programs:
+            raise ProgramLoadError("Program already loaded: %s" % unique_id)
+
         if inspect.isclass(program):
             program = program(self)
 
-        name = program.__class__.__name__
-        if name in self.programs:
-            raise ProgramLoadError("Program already loaded: %s" % name)
-
-        self.programs[name] = program
+        program.unique_id = unique_id
+        self.programs[unique_id] = program
         program.load(config=config, state=state or {})
 
+        if hasattr(program, 'plugin_import_list'):
+            program.plugin_import_list(plugins)
 
-    def program_unload(self, program):
-        """Unloads a program.
-        Note the 'program' argument is a instance of dogma.program.Program
+        return program
+
+
+    def program_unload(self, unique_id):
         """
-        name = program.__class__.__name__
-        if name not in self.programs:
-            raise ProgramLoadError("Cannot remove non-existant program: %s" % name)
+        Unloads a Program instance and calls its .unload() method
 
-        state = self.programs[name].unload({})
-        del self.programs[name]
+        Parameters
+        ----------
+        unique_id : str
+            unique id string of the program to unload.
+
+        Returns
+        ----------
+        dogma.program.Program
+            A instance of the class specified in the `program` argument
+
+        Raises
+        ----------
+        dogma.program.ProgramLoadError
+
+        """
+
+        if unique_id is None or unique_id not in self.programs:
+            raise ProgramLoadError("Cannot remove non-loaded program: %s" % unique_id)
+
+        state = self.programs[unique_id].unload({})
+        del self.programs[unique_id]
         return state
 
 
-    def program_reload(self, program):
-        """Reloads a program.
-        Note the 'program' argument is a instance of dogma.program.Program
+    def program_reload(self, unique_id, config=None):
         """
-        name = program.__class__.__name__
-        config = self.programs[name].config
-        state = self.program_unload(program)
-        module = reload_module(inspect.getmodule(program))
-        self.program_load(getattr(module, name), config, state)
+        Reloads a Program instance. This calls Agent.program_load(), reloads the base module for
+        Program subclass, calls Agent.program_load(), and triggers the instance's .init() method.
+
+        Parameters
+        ----------
+        unique_id : str
+            unique id string of the program to unload.
+        config : Optional
+            abstract configuration object to be passed to the program instance.
+            If None then the unloaded instance's config will be used.
+
+        Raises
+        ----------
+        dogma.program.ProgramLoadError
+
+        Returns
+        ----------
+        dogma.program.Program
+            The new instance of the Program subclass
+
+        """
+        if unique_id is None or unique_id not in self.programs:
+            raise ProgramLoadError("Cannot reload non-loaded program: %s" % unique_id)
+
+        program = self.programs[unique_id]
+        if config is None:
+            config = program.config
+        state = self.program_unload(unique_id)
+        reload_module(inspect.getmodule(program))
+
+        program = self.program_load(
+            program.__class__,
+            unique_id,
+            config=config,
+            state=state,
+            plugins=config.get("plugins") # Note: this resets the plugin list. we should only reload active
+            )
+        program.init()
+        return program
 
 
     def init(self):
-        """Initializes all programs, calling each ones .init() method.
+        """
+        Initializes all loaded Program subclass instances, calling each one's .init() method and
+        waits until all greenlets are finished.
         """
         for program in self.programs.values():
             program.init()
