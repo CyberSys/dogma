@@ -223,7 +223,7 @@ class PlugableProgram(Program):
         """
         if state is None:
             state = {}
-        state['plugins'] = state['plugins'] or {}
+        state['plugins'] = state.get('plugins', {})
 
         for name, plugin in self.plugins.items():
             state['plugins'][name] = plugin.unload({})
