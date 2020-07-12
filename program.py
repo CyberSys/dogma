@@ -70,9 +70,11 @@ class Plugin(object):
     config : Object
         abstract configuration object placeholder.
     """
+    config = None
+    unique_id = None
+
     def __init__(self, parent):
         self.parent = parent
-        self.config = None
 
 
     def load(self, config=None, state=None):
@@ -262,23 +264,24 @@ class PlugableProgram(Program):
             self.plugin_import(module, config)
 
 
-    def plugin_import(self, module, config=None):
+    def plugin_import(self, module, unique_id=None, classname="Plugin", config=None):
         """
         Adds and loads a plugin (or plugins), based on module path
         """
+        unique_id = unique_id or module
         mod = importlib.import_module(module)
-        plugin = getattr(mod, "Plugin")
+        plugin = getattr(mod, classname)
 
         if not plugin:
-            raise ProgramLoadError("Class Plugin for module %s not defined" % module)
+            raise ProgramLoadError("Class %s for module %s not defined" % (classname, module))
 
         if not inspect.isclass(plugin):
-            raise ProgramLoadError("Attribute Plugin for module %s is not a class" % module)
+            raise ProgramLoadError("Attribute %s for module %s is not a class" % (classname, module))
 
         if plugin == Plugin:
-            raise ProgramLoadError("Class Plugin for module %s can not be dogma.program.Plugin" % module)
+            raise ProgramLoadError("Class %s for module %s can not be dogma.program.Plugin" % (classname, module))
 
-        return self.plugin_load(plugin, module, config=config)
+        return self.plugin_load(plugin, unique_id, config=config)
 
 
     def plugin_load(self, plugin, unique_id, config=None, state=None):
