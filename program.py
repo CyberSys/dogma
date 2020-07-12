@@ -256,6 +256,8 @@ class PlugableProgram(Program):
 
 
     def plugin_import_list(self, plugins):
+        if not plugins:
+            return
         for module, config in plugins.items():
             self.plugin_import(module, config)
 
@@ -307,7 +309,7 @@ class PlugableProgram(Program):
         return state
 
 
-    def plugin_reload(self, unique_id):
+    def plugin_reload(self, unique_id, config=None):
         """
         Reloads a plugin.
         """
@@ -316,9 +318,16 @@ class PlugableProgram(Program):
             raise ProgramLoadError("Cannot reload non-loaded plugin: %s" % unique_id)
 
         plugin = self.plugins[unique_id]
-        config = plugin.config # TODO: this should accept custom configs like program_reload does.
+        if config is None:
+            config = plugin.config
         state = self.plugin_unload(unique_id)
         reload_module(inspect.getmodule(plugin))
-        plugin = self.plugin_load(plugin.__class__, unique_id, config=config, state=state)
+
+        plugin = self.plugin_load(
+            plugin.__class__, 
+            unique_id, 
+            config=config, 
+            state=state
+            )
         plugin.init()
         return plugin
