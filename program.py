@@ -69,6 +69,8 @@ class Plugin(object):
         The object instance of a Program subclass that this plugin is attached to.
     config : Object
         abstract configuration object placeholder.
+    unique_id : str
+        unique string identifier assigned to this plugin
     """
     config = None
     unique_id = None
@@ -83,6 +85,15 @@ class Plugin(object):
         attribute. Your Plugin subclass should call this BEFORE executing any of
         its own code in this method. Note this should just contain initial setup
         code.
+
+        Parameters
+        ----------
+        config : Optional
+            abstract configuration object to be passed to the program instance.
+        state : Optional(dict)
+            state dict to be passed to the program instance, used to restore a
+            previous state. The return value from Plugin.unload() (or 
+            PluggableProgram.plugin_unload())        
         """
         self.config = config
 
@@ -91,6 +102,9 @@ class Plugin(object):
         """
         Called when the plugin is unloaded, or the program is unloaded/shutting
         down.
+
+        Parameters
+        ----------
         """
         if state is None:
             state = {}
@@ -260,8 +274,10 @@ class PlugableProgram(Program):
     def plugin_import_list(self, plugins):
         if not plugins:
             return
-        for module, config in plugins.items():
-            self.plugin_import(module, config)
+        for args in plugins:
+            self.plugin_import(*args)
+        #for module, config in plugins.items():
+        #    self.plugin_import(module, config=config)
 
 
     def plugin_import(self, module, unique_id=None, classname="Plugin", config=None):
