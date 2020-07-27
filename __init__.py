@@ -246,5 +246,5 @@ class Agent(object):
         """
         Unloads all programs and plugins and ends the agents run loop
         """
-        for program in self.programs:
+        for program in [x for x in self.programs.keys()]:
             self.program_unload(program)
