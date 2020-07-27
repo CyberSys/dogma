@@ -240,3 +240,11 @@ class Agent(object):
         for program in self.programs.values():
             program.init()
         gevent.joinall([x.green for x in self.programs.values()])
+
+
+    def shutdown(self):
+        """
+        Unloads all programs and plugins and ends the agents run loop
+        """
+        for program in self.programs:
+            self.program_unload(program)
