@@ -248,3 +248,8 @@ class Agent(object):
         """
         for program in [x for x in self.programs.keys()]:
             self.program_unload(program)
+
+
+    def propogate(self, command, data):
+        for program in self.programs:
+            program.propogate(command, data)

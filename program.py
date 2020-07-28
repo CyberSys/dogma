@@ -92,8 +92,8 @@ class Plugin(object):
             abstract configuration object to be passed to the program instance.
         state : Optional(dict)
             state dict to be passed to the program instance, used to restore a
-            previous state. The return value from Plugin.unload() (or 
-            PluggableProgram.plugin_unload())        
+            previous state. The return value from Plugin.unload() (or
+            PluggableProgram.plugin_unload())
         """
         self.config = config
 
@@ -165,6 +165,9 @@ class Plugin(object):
         return self.parent.agent
 
 
+    def propogate(self, command, data):
+        pass
+
 
 class Program(object):
     """
@@ -212,6 +215,9 @@ class Program(object):
         """
         raise NotImplementedError()
 
+
+    def propogate(self, command, data):
+        pass
 
 
 class PlugableProgram(Program):
@@ -343,10 +349,16 @@ class PlugableProgram(Program):
         reload_module(inspect.getmodule(plugin))
 
         plugin = self.plugin_load(
-            plugin.__class__, 
-            unique_id, 
-            config=config, 
+            plugin.__class__,
+            unique_id,
+            config=config,
             state=state
             )
+
         plugin.init()
         return plugin
+
+
+    def propogate(self, command, data):
+        for plugin in self.plugins:
+            plugin.propogate(command, data)
