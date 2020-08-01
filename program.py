@@ -280,10 +280,8 @@ class PlugableProgram(Program):
     def plugin_import_list(self, plugins):
         if not plugins:
             return
-        for args in plugins:
-            self.plugin_import(*args)
-        #for module, config in plugins.items():
-        #    self.plugin_import(module, config=config)
+        for kwargs in plugins:
+            self.plugin_import(**kwargs)
 
 
     def plugin_import(self, module, unique_id=None, classname="Plugin", config=None):
